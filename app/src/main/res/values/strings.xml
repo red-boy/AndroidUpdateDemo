@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AppUpdateDemo</string>
+    <string name="tip_requesting">正在请求...</string>
 </resources>
