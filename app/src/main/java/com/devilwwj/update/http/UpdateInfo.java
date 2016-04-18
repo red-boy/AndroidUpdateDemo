@@ -1,5 +1,8 @@
 package com.devilwwj.update.http;
 
+/**
+ * 更新信息（包括应用名、版本名、版本号、系统版本、sdk版本、更新信息、apk地址、是否强制更新）
+ */
 public class UpdateInfo {
 	private String name;
 	private String versionName;
