@@ -35,6 +35,13 @@ public class AppUpdateService extends Service {
     // 下载进度
     private int downloadPercentage = 0;
 
+    // UI线程处理句柄
+    private Handler handler;
+
+    // 是否取消了升级
+    private boolean isCancelUpdate = false;
+
+
 
     public Handler getHandler() {
         return handler;
@@ -44,8 +51,6 @@ public class AppUpdateService extends Service {
         this.handler = handler;
     }
 
-    // UI线程处理句柄
-    private Handler handler;
 
     public class AppUpdateBinder extends Binder {
         public AppUpdateService getService() {
@@ -100,6 +105,8 @@ public class AppUpdateService extends Service {
         thread.start();
     }
 
+
+
     class DownloadRunnable implements Runnable {
         private String url;
         private String version;
@@ -128,6 +135,11 @@ public class AppUpdateService extends Service {
                     if (input != null) {
                         // 这时写入SDcard
                         File resultFile = writeFile(fileName, input, fileSize);
+                        if (resultFile == null) {
+                            flag = AppUpdateManager.FLAG_DOWNLOAD_ERROR;
+                        } else {
+                            flag = AppUpdateManager.FLAG_DOWNLOAD_SUCCESS;
+                        }
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -135,11 +147,32 @@ public class AppUpdateService extends Service {
                     try {
                         input.close();
                     } catch (Exception e) {
+                        // 超时，input为null
+                        flag = AppUpdateManager.FLAG_DOWNLOAD_ERROR;
                         e.printStackTrace();
                     }
                 }
+            } else { // sdcard空间不足
+                flag = AppUpdateManager.FLAG_NO_ENOUGH_SPACE;
             }
+
+            sendDownloadResult(flag, fileName);
         }
+    }
+
+    /**
+     * 通过handle通知消息
+     * @param flag
+     * @param fileName
+     */
+    private void sendDownloadResult(int flag, String fileName) {
+        Message msg = new Message();
+        msg.what = AppUpdateManager.MSG_DOWNLOAD_RESULT;
+        Bundle bundle = new Bundle();
+        bundle.putInt("downloadResut", flag);
+        bundle.putString("fileName", fileName);
+        msg.setData(bundle);
+        handler.sendMessage(msg);
     }
 
     /**
@@ -162,6 +195,7 @@ public class AppUpdateService extends Service {
             int temp;
             // 在sd卡创建文件
             file = FileUtils.createFileInSd(FileUtils.CACHDIR + File.separator + fileName);
+            // 文件输出流
             output = new FileOutputStream(file);
 
             // 循环写入
@@ -233,6 +267,13 @@ public class AppUpdateService extends Service {
             e.printStackTrace();
         }
         return input;
+    }
+
+    /**
+     * 取消升级
+     */
+    public void cancelUpdate() {
+        isCancelUpdate = true;
     }
 
 

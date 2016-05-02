@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">AppUpdateDemo</string>
     <string name="tip_requesting">正在请求...</string>
+    <string name="update_app">更新应用</string>
+    <string name="tip_downloadsuccess">下载成功</string>
+    <string name="tip_cancelupdate">取消更新</string>
+    <string name="tip_update_error">下载出错</string>
+    <string name="tip_no_enough_space">空间不足</string>
 </resources>
