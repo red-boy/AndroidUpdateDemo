@@ -1,21 +1,32 @@
 package com.devilwwj.update.http;
 
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.v7.app.NotificationCompat;
 import android.util.Log;
+import android.widget.RemoteViews;
 
+import com.devilwwj.update.MainActivity;
 import com.devilwwj.update.R;
+import com.devilwwj.update.utils.ApkUtils;
+import com.devilwwj.update.utils.FileUtils;
 import com.devilwwj.update.utils.ToastUtils;
 import com.devilwwj.update.utils.Utils;
 import com.loopj.android.http.RequestHandle;
+
+import java.io.File;
 
 /**
  * com.devilwwj.update.http
@@ -51,7 +62,6 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
     public static final String KEY_PERCENT = "percent";
 
 
-
     private static AppUpdateManager instance;
 
     // 定义更新服务
@@ -68,6 +78,14 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
     // 是否已绑定服务
     private boolean isBinded = false;
 
+    // 根据它来判断是否显示消息通知
+    private boolean isForeground = false;
+
+    // 通知
+    private Notification notification = null;
+    private NotificationManager notificationManager = null;
+    private NotificationCompat.Builder builder = null;
+
     public static AppUpdateManager getInstance(Context context) {
         if (instance == null) {
             synchronized (AppUpdateManager.class) {
@@ -79,6 +97,18 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
 
     public AppUpdateManager(Context context) {
         this.mContext = context;
+
+        builder = new NotificationCompat.Builder(mContext);
+        builder.setSmallIcon(R.mipmap.ic_launcher);
+        builder.setTicker("下载完成");
+        builder.setWhen(System.currentTimeMillis());
+        builder.setAutoCancel(true);
+        notification = builder.build();
+
+        // 获取通知服务
+        notificationManager = (NotificationManager) mContext
+                .getSystemService(mContext.NOTIFICATION_SERVICE);
+
         initServiceConnection();
         initProgressDialog();
 
@@ -136,6 +166,7 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
                 updateService = aBinder.getService();
 
                 isBinded = true;
+                // 为service设置handler
                 updateService.setHandler(handler);
                 // TODO: 执行下载任务
                 updateService.downloadStart(downloadUrl, versionName);
@@ -253,17 +284,30 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
      * @param msg
      */
     private void updateProgress(Message msg) {
+        if (updateService != null) {
+            Notification sNotification = updateService.getNotification();
+            NotificationManager sNotificationManager = updateService.getNotificationManager();
 
-        // 得到下载进度百分比
-        int precentage = msg.getData().getInt("percent");
-        // 下载100%才算下载完成
-        if (precentage == 100) {
-            ToastUtils.showShort(mContext, R.string.tip_downloadsuccess);
+            // 得到下载进度百分比
+            int percentage = msg.getData().getInt(AppUpdateManager.KEY_PERCENT);
+            // 设置progress进度
+            progressDialog.setProgress(percentage);
+            progressDialog.show();
+
+            // 在后台时在消息通知栏显示下载进度
+            if (!isForeground) {
+                if (sNotification != null) {
+                    RemoteViews remoteViews = sNotification.contentView;
+                    if (remoteViews != null) {
+                        remoteViews.setTextViewText(R.id.notification_update_progress_text, percentage + "%");
+                        remoteViews.setProgressBar(R.id.notification_update_progress_bar, 100, percentage, false);
+                        sNotificationManager.notify(AppUpdateService.NOTIFICATION_ID, sNotification);
+                    } else {
+                        Log.d("update", "remoteview null");
+                    }
+                }
+            }
         }
-        // 设置progress进度
-        progressDialog.setProgress(precentage);
-        progressDialog.show();
-
     }
 
 
@@ -276,15 +320,26 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
         switch (downloadResult) {
             case FLAG_CANCEL_UPDATE: // 取消下载
                 ToastUtils.showShort(mContext, R.string.tip_cancelupdate);
+
+                showNotification("取消下载", "已取消下载", new Intent(mContext, MainActivity.class));
                 break;
             case FLAG_DOWNLOAD_ERROR: // 下载错误
                 ToastUtils.showShort(mContext, R.string.tip_update_error);
+                showNotification("更新出错", "更新出错，请稍后再试", new Intent(mContext, MainActivity.class));
+
                 break;
             case FLAG_NO_ENOUGH_SPACE: // 空间不足
                 ToastUtils.showShort(mContext, R.string.tip_no_enough_space);
+                showNotification("下载出错，", "存储空间不足", new Intent(mContext, MainActivity.class));
+
                 break;
             case FLAG_DOWNLOAD_SUCCESS: // 下载成功
-                ToastUtils.showShort(mContext, R.string.tip_downloadsuccess);
+                showInstallNotification("下载完毕", "点击安装");
+
+                // 如果在前台，则安装apk
+                if (isForeground) {
+                    ApkUtils.installApp(mContext, FileUtils.getCacheApkPath(fileName));
+                }
                 break;
         }
 
@@ -293,6 +348,91 @@ public class AppUpdateManager implements CheckUpdateAsynResponseHandler.OnCheckU
         if (updateService != null) {
             unBindService();
         }
+    }
+
+    /**
+     * 在前台，消除notification
+     */
+    public void appForeground() {
+        isForeground = true;
+
+        if (updateService != null) {
+            updateService.cancelNotification();
+        }
+    }
+
+    /**
+     * 在后台，显示notification
+     */
+    public void appBackground() {
+        isForeground = false;
+
+        if (updateService != null) {
+            updateService.notifyMessage();
+        }
+
+    }
+
+    /**
+     * 显示通知
+     *
+     * @param nTitle
+     * @param nMessage
+     * @param intent
+     */
+    public void showNotification(String nTitle, String nMessage, Intent intent) {
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                mContext, AppUpdateService.NOTIFICATION_ID, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+
+        setNotification(nTitle, nTitle, nMessage, contentIntent);
+
+        notificationManager.notify(
+                AppUpdateService.NOTIFICATION_ID, notification);
+    }
+
+    /**
+     * 设置消息通知内容
+     *
+     * @param ticker
+     * @param title
+     * @param text
+     * @param intent
+     */
+    private void setNotification(String ticker, String title,
+                                 String text, PendingIntent intent) {
+
+        if (notification != null) {
+            // change notification and repo
+            if (builder != null) {
+                builder.setTicker(ticker);
+                builder.setContentTitle(title);
+                builder.setContentText(text);
+                builder.setAutoCancel(true);
+                builder.setContent(null);
+                builder.setContentIntent(intent);
+
+                notification = builder.build();
+            }
+
+        }
+    }
+
+    /**
+     * 显示安装的通知
+     *
+     * @param nTitle
+     * @param nMessage
+     */
+    public void showInstallNotification(String nTitle, String nMessage) {
+        Intent installIntent = new Intent(Intent.ACTION_VIEW);
+        installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        installIntent.setDataAndType(
+                Uri.fromFile(new File(FileUtils.getCacheApkPath(FileUtils.getApkFileName(versionName)))),
+                "application/vnd.android.package-archive");
+
+        showNotification(nTitle, nMessage, installIntent);
+
     }
 
 }

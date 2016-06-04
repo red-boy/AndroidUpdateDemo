@@ -30,5 +30,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+//        if (Utils.isAppOnForeground(this)) {
+            AppUpdateManager.getInstance(this).appForeground();
+//        }
 
+     }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+//        if (!Utils.isAppOnForeground(this)) {
+            AppUpdateManager.getInstance(this).appBackground();
+//        }
+    }
+
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+    }
 }

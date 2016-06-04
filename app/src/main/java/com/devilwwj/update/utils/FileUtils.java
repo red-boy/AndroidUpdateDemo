@@ -232,4 +232,14 @@ public class FileUtils {
 
 
 
+	/**
+	 * 获得apk文件名
+	 * @param versionName
+	 * @return
+	 */
+	public static String getApkFileName(String versionName) {
+		return new StringBuffer().append("app_v").append(versionName).append(".apk").toString();
+	}
+
+
 }

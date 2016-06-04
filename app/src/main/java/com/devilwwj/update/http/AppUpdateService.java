@@ -1,5 +1,8 @@
 package com.devilwwj.update.http;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Binder;
@@ -8,8 +11,12 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.support.annotation.Nullable;
+import android.support.v7.app.NotificationCompat;
 import android.util.Log;
+import android.widget.RemoteViews;
 
+import com.devilwwj.update.MainActivity;
+import com.devilwwj.update.R;
 import com.devilwwj.update.utils.FileUtils;
 
 import java.io.File;
@@ -41,16 +48,40 @@ public class AppUpdateService extends Service {
     // 是否取消了升级
     private boolean isCancelUpdate = false;
 
-
+    // 消息通知管理对象
+    private NotificationManager notificationManager = null;
+    // 消息通知对象
+    private Notification notification = null;
+    // 消息通知id
+    public static final int NOTIFICATION_ID = 1000;
 
     public Handler getHandler() {
         return handler;
     }
 
+    /**
+     * 设置handler
+     * @param handler
+     */
     public void setHandler(Handler handler) {
         this.handler = handler;
     }
 
+    public NotificationManager getNotificationManager() {
+        return notificationManager;
+    }
+
+    public void setNotificationManager(NotificationManager notificationManager) {
+        this.notificationManager = notificationManager;
+    }
+
+    public Notification getNotification() {
+        return notification;
+    }
+
+    public void setNotification(Notification notification) {
+        this.notification = notification;
+    }
 
     public class AppUpdateBinder extends Binder {
         public AppUpdateService getService() {
@@ -58,9 +89,55 @@ public class AppUpdateService extends Service {
         }
     }
 
+
+
     @Override
     public void onCreate() {
         super.onCreate();
+
+        notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        initNotification();
+    }
+
+    /**
+     * 初始化消息通知
+     */
+    public void initNotification() {
+        long when = System.currentTimeMillis();
+
+        // V7包下的NotificationCompat
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
+        // Ticker是状态栏显示的提示
+        builder.setTicker("应用更新");
+        builder.setSmallIcon(R.mipmap.ic_launcher);
+        builder.setWhen(when);
+        builder.setAutoCancel(true);
+        // 自定义contentView
+        RemoteViews contentView = new RemoteViews(getPackageName(), R.layout.notification_update);
+        contentView.setTextViewText(R.id.notification_update_progress_text, "0%");
+        contentView.setImageViewResource(R.id.notification_update_image, R.mipmap.ic_launcher);
+        // 为notification设置contentView
+        builder.setContent(contentView);
+
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        builder.setContentIntent(contentIntent);
+        // 构建一个notification
+        notification = builder.build();
+    }
+
+    public void notifyMessage() {
+        if (notification != null && notificationManager != null) {
+            // 显示通知
+            notificationManager.notify(NOTIFICATION_ID, notification);
+        }
+    }
+
+    /**
+     * 消除通知
+     */
+    public void cancelNotification() {
+        notificationManager.cancel(NOTIFICATION_ID);
     }
 
     /**
@@ -169,8 +246,8 @@ public class AppUpdateService extends Service {
         Message msg = new Message();
         msg.what = AppUpdateManager.MSG_DOWNLOAD_RESULT;
         Bundle bundle = new Bundle();
-        bundle.putInt("downloadResut", flag);
-        bundle.putString("fileName", fileName);
+        bundle.putInt(AppUpdateManager.KEY_DOWNLOAD_RESULT, flag);
+        bundle.putString(AppUpdateManager.KEY_FILENAME, fileName);
         msg.setData(bundle);
         handler.sendMessage(msg);
     }
@@ -215,7 +292,7 @@ public class AppUpdateService extends Service {
                     Message msg = new Message();
                     msg.what = AppUpdateManager.MSG_DOWNLOAD_PROGRESS;
                     Bundle bundle = new Bundle();
-                    bundle.putInt("percent", downloadPercentage);
+                    bundle.putInt(AppUpdateManager.KEY_PERCENT, downloadPercentage);
                     msg.setData(bundle);
                     handler.sendMessage(msg);
                 }

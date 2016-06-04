@@ -6,4 +6,5 @@
     <string name="tip_cancelupdate">取消更新</string>
     <string name="tip_update_error">下载出错</string>
     <string name="tip_no_enough_space">空间不足</string>
+    <string name="app_update">应用更新</string>
 </resources>
